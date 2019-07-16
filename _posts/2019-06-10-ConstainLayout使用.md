@@ -35,7 +35,7 @@
 
 后三个属性为引用另一个部件方式，圆的半径，圆的角度。这里给一张官方的参考图。
 
-![](../img/constraintLayout-1.png)
+![](http://github.com/callmexiaolu/callmexiaolu.io/raw/master/img/constraintLayout-1.png)
 
 * ##### Bias:
 
