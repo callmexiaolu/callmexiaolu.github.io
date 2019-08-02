@@ -182,9 +182,220 @@ public boolean onTouchEvent(MotionEvent event)
 
 如上面图三所示，通过不断循环调用这几个方法，从最终的子view一路返回测量到根部进行汇总，进而完成测量，整个过程就可以参考下图。
 
+知道了事件传递和测量，那么xml类型的布局是如何被解析到java中的呢？
+
+### xml布局解析
+
+布局解析使用的类是抽象类LayoutInflater，我们平时使用它来对xml布局进行解析进而构造出view对象，inflate方法大家都很熟悉，inflate方法有多个重载，分别是：
+
+```java
+public View inflate(@LayoutRes int resource, @Nullable ViewGroup root) {
+        return inflate(resource, root, root != null);
+    }
+
+public View inflate(@LayoutRes int resource, @Nullable ViewGroup root, boolean attachToRoot) {
+        final Resources res = getContext().getResources();
+        if (DEBUG) {
+            Log.d(TAG, "INFLATING from resource: \"" + res.getResourceName(resource) + "\" ("
+                    + Integer.toHexString(resource) + ")");
+        }
+
+        final XmlResourceParser parser = res.getLayout(resource);
+        try {
+            return inflate(parser, root, attachToRoot);
+        } finally {
+            parser.close();
+        }
+    }
+
+
+public View inflate(XmlPullParser parser, @Nullable ViewGroup root) {
+        return inflate(parser, root, root != null);
+    }
+
+ public View inflate(XmlPullParser parser, @Nullable ViewGroup root, boolean attachToRoot) {
+   .....
+ }
+```
+
+看出前三个方法最后都指向最后一个，我们平时在使用Adapter的时候，创建itemView的时候都会构建一个view出来，通常是这样子使用LayoutInflater.from(mContext).inflate(layoutResourceId, null)。
+
+```java
+public abstract class LayoutInflater {
+    ...
+    /**
+     * Inflate a new view hierarchy from the specified XML node. Throws
+     * {@link InflateException} if there is an error.
+     */
+    //我们传递过来的参数如下： root 为null ， attachToRoot为false 。
+    public View inflate(XmlPullParser parser, ViewGroup root, boolean attachToRoot) {
+        synchronized (mConstructorArgs) {
+            final AttributeSet attrs = Xml.asAttributeSet(parser);
+            Context lastContext = (Context)mConstructorArgs[0];
+            mConstructorArgs[0] = mContext;  //该mConstructorArgs属性最后会作为参数传递给View的构造函数
+            View result = root;  //根View
+ 
+            try {
+                // Look for the root node.
+                int type;
+                while ((type = parser.next()) != XmlPullParser.START_TAG &&
+                        type != XmlPullParser.END_DOCUMENT) {
+                    // Empty
+                }
+                ...
+                final String name = parser.getName();  //节点名，即API中的控件或者自定义View完整限定名。
+                if (TAG_MERGE.equals(name)) { // 处理<merge />标签
+                    if (root == null || !attachToRoot) {
+                        throw new InflateException("<merge /> can be used only with a valid "
+                                + "ViewGroup root and attachToRoot=true");
+                    }
+                    //将<merge />标签的View树添加至root中
+                    rInflate(parser, root, attrs);
+                } else {
+                    // Temp is the root view that was found in the xml
+                	//创建该xml布局文件所对应的根View。
+                    View temp = createViewFromTag(name, attrs); 
+ 
+                    ViewGroup.LayoutParams params = null;
+ 
+                    if (root != null) {
+                        // Create layout params that match root, if supplied
+                    	//根据AttributeSet属性获得一个LayoutParams实例，记住调用者为root。
+                        params = root.generateLayoutParams(attrs); 
+                        if (!attachToRoot) { //重新设置temp的LayoutParams
+                            // Set the layout params for temp if we are not
+                            // attaching. (If we are, we use addView, below)
+                            temp.setLayoutParams(params);
+                        }
+                    }
+                    // Inflate all children under temp
+                    //添加所有其子节点，即添加所有子View
+                    rInflate(parser, temp, attrs);
+                    
+                    // We are supposed to attach all the views we found (int temp)
+                    // to root. Do that now.
+                    if (root != null && attachToRoot) {
+                        root.addView(temp, params);
+                    }
+                    // Decide whether to return the root that was passed in or the
+                    // top view found in xml.
+                    if (root == null || !attachToRoot) {
+                        result = temp;
+                    }
+                }
+            } 
+            ...
+            return result;
+        }
+    }
+    
+    /*
+     * default visibility so the BridgeInflater can override it.
+     */
+    View createViewFromTag(String name, AttributeSet attrs) {
+    	//节点是否为View，如果是将其重新赋值，形如 <View class="com.qin.xxxView"></View>
+        if (name.equals("view")) {  
+            name = attrs.getAttributeValue(null, "class");
+        }
+        try {
+            View view = (mFactory == null) ? null : mFactory.onCreateView(name,
+                    mContext, attrs);  //没有设置工厂方法
+ 
+            if (view == null) {
+                //通过这个判断是Android API的View，还是自定义View
+            	if (-1 == name.indexOf('.')) {
+                    view = onCreateView(name, attrs); //创建Android API的View实例
+                } else {
+                    view = createView(name, null, attrs);//创建一个自定义View实例
+                }
+            }
+            return view;
+        } 
+        ...
+    }
+    //获得具体视图的实例对象
+    public final View createView(String name, String prefix, AttributeSet attrs) {
+	 Constructor<? extends View> constructor = sConstructorMap.get(name);
+        if (constructor != null && !verifyClassLoader(constructor)) {
+            constructor = null;
+            sConstructorMap.remove(name);
+        }
+		 Class<? extends View> clazz = null;
+		//以下功能主要是获取如下三个类对象：
+		//1、类加载器  ClassLoader
+		//2、Class对象
+		//3、类的构造方法 Constructor
+		try {
+		    if (constructor == null) {
+		    // Class not found in the cache, see if it's real, and try to add it
+		    clazz = mContext.getClassLoader().loadClass(prefix != null ? (prefix + name) : name);
+		    ...
+		    constructor = clazz.getConstructor(mConstructorSignature);
+		    sConstructorMap.put(name, constructor);
+		} else {
+		    // If we have a filter, apply it to cached constructor
+		    if (mFilter != null) {
+		        ...   
+		    }
+		}
+		    //传递参数获得该View实例对象
+		    Object[] args = mConstructorArgs;
+		    args[1] = attrs;
+		    return (View) constructor.newInstance(args);
+		} 
+		...
+	}
+ 
+}
+```
+
+值得关注的一个方法：rInflate()方法
+
+```java
+ void rInflate(XmlPullParser parser, View parent, Context context,
+            AttributeSet attrs, boolean finishInflate) {
+   ........
+   if (TAG_REQUEST_FOCUS.equals(name)) {
+                pendingRequestFocus = true;
+                consumeChildElements(parser);
+            } else if (TAG_TAG.equals(name)) {
+                parseViewTag(parser, parent, attrs);
+            } else if (TAG_INCLUDE.equals(name)) {
+                if (parser.getDepth() == 0) {
+                    throw new InflateException("<include /> cannot be the root element");
+                }
+                parseInclude(parser, context, parent, attrs);
+            } else if (TAG_MERGE.equals(name)) {
+                throw new InflateException("<merge /> must be the root element");
+            } else {
+                final View view = createViewFromTag(parent, name, context, attrs);
+                final ViewGroup viewGroup = (ViewGroup) parent;
+                final ViewGroup.LayoutParams params = viewGroup.generateLayoutParams(attrs);
+                rInflateChildren(parser, view, attrs, true);
+                viewGroup.addView(view, params);
+            }
+ }
+
+final void rInflateChildren(XmlPullParser parser, View parent, AttributeSet attrs,
+                                 boolean finishInflate) throws XmlPullParserException, IOException {
+        rInflate(parser, parent, parent.getContext(), attrs, finishInflate);
+    }
+
+```
+
+可以看出，rInflate（）方法调用rInflateChildren()方法，循环递归调用，以当前view作为根view形成一颗view树，不断循环。
+
+总结一下，布局到view的构建是通过xml中的标签名称，属性等参数进行构建view实例
+
+1. 标签解析，名字获取
+2. 判断类型：自定义view还是android自带的view
+3. 通过循环递归调用遍历整课view树
+4. 构建：通过类加载的形式进行构建
+5. 添加关联到根view并返回
+
 ### 思想
 
-这种不断往底层搜索，直到拿到合适的结果返回，没有合适的结果便回到上一个节点继续进行搜索的方法被称为[深度优先搜索（DFS）]([https://baike.baidu.com/item/%E6%B7%B1%E5%BA%A6%E4%BC%98%E5%85%88%E6%90%9C%E7%B4%A2/5224976](https://baike.baidu.com/item/深度优先搜索/5224976))。
+在整个分析流程中，出现比较多的都是循环递归调用，这种不断往底层搜索，直到拿到合适的结果返回，没有合适的结果便回到上一个节点继续进行搜索的方法被称为[深度优先搜索（DFS）]([https://baike.baidu.com/item/%E6%B7%B1%E5%BA%A6%E4%BC%98%E5%85%88%E6%90%9C%E7%B4%A2/5224976](https://baike.baidu.com/item/深度优先搜索/5224976))。
 
 ![](https://gss0.bdstatic.com/-4o3dSag_xI4khGkpoWK1HF6hhy/baike/c0%3Dbaike80%2C5%2C5%2C80%2C26/sign=d0a66a1c97dda144ce0464e0d3debbc7/0ff41bd5ad6eddc48dab7af439dbb6fd52663375.jpg)
 
@@ -192,5 +403,18 @@ public boolean onTouchEvent(MotionEvent event)
 
 常用的实现方法为递归实现和栈实现。在本文中Android的View实现的方法为循环调用实现，即measure() ——>onMeasure()——>measure() ——>onMeasure………….
 
-由[上述代码](#枝干🌿（ViewGroup）)中的measureChildren方法可以知道，size(当前ViewGroup下的子View数量)变量影响了速度，而这个size就是这棵树中每一层的view的数量。但是影响速度的仅仅是size吗？还有层数。如果树只有一层那么，时间复杂度就是O(n) ，因为只遍历一次子View数量。如果有几层，那么就代表子ViewGroup下还有子ViewGroup，时间复杂度就变成了O(n*m)，这里的m是子ViewGroup的数量。所以我们在进行布局设计的时候能尽量减少层级就减少，因为这会带来性能上的提升，这对于事件的传递和试图的绘制都有帮助
+rInflate（）——>rInflateChildren()——>rInflate（）——>rInflateChildren()——>rInflate（）——>rInflateChildren()………..
+
+由[上述代码](#枝干🌿（ViewGroup）)中的measureChildren方法可以知道，size(当前ViewGroup下的子View数量)变量影响了速度，而这个size就是这棵树中每一层的view的数量。但是影响速度的仅仅是size吗？还有层数。如果树只有一层那么，时间复杂度就是O(n) ，因为只遍历一次子View数量。如果有几层，那么就代表子ViewGroup下还有子ViewGroup，时间复杂度就变成了O(n*m)，这里的m是子ViewGroup的数量。
+
+而在rInflate方法中：
+
+```java
+while (((type = parser.next()) != XmlPullParser.END_TAG ||
+                parser.getDepth() > depth) && type != XmlPullParser.END_DOCUMENT)
+```
+
+xml解析的深度也影响了速度。
+
+所以我们在进行布局设计的时候能尽量减少层级就减少，因为会带来性能上的提升。
 
