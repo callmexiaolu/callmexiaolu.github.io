@@ -206,5 +206,14 @@ ViewPager原本的本质就是提前加载下一个页面，这样子就方便�
 
 ##### 前置知识——熟知Fragment的生命周期
 
+官方的生命周期图：
+
+![](https://img-blog.csdn.net/20160220171551700)
 
 
+
+Fragment在onCreateView()创建视图，我们可以在这里进行判断是否进行懒加载，如果进行懒加载，那么创建懒加载的视图，否则就直接加载视图。这里利用getUserVisibleHint()方法进行判断当前fragment是否能被用户所见，因为getUserVisibleHint()贯穿了fragment的生命周期，同时重写setUserVisibleHint(boolean isUserVisible)方法，方法内进行判断是否被被用户可见，然后进行是否初始化并加载需要显示的视图。
+
+
+
+**总体思路：** onCreateView()判断是否进行懒加载，相关资源是否被初始化 ——>  重写setUserVisibleHint(boolean isUserVisible)方法，内部也判断是否懒加载，资源初始化 ——>setUserVisibleHint方法内部判断可见，选择初始化数据加载视图。
