@@ -184,3 +184,99 @@ ${workspace} = .jenkins/workspace
 
 ### 多渠道不同配置打包以及自行选择配置打包
 
+在项目配置中手动输入构建步骤（即在Task中），例如：
+
+```groovy
+clean   //编译前清除项目build的文件
+assemble${PRODUCT_FLAVOR_BUILD} //生成相关渠道的apk
+```
+
+这些都是gradle的构建任务。
+
+![](http://github.com/callmexiaolu/callmexiaolu.github.io/raw/master/img/post-9-2-13.png)
+
+
+
+* make gradlew executable：是指gradlew命令可执行
+
+* wrapper location： 是指gradlew文件的位置（一般是根project）
+
+* Task：gradlew执行的任务，图片中即是：./gradlew assembleekwing_tencentRelease，意思为生成一个在build文件中ProductFlavor中的ekwing_tencent的release包，也就是其中一个渠道包。
+* root build script：指你要构建项目的build.gradle文件，一般是app目录下的build文件
+
+
+
+### 构建名称更改与展示上传蒲公英二维码
+
+安装使用build name setter and descript扩展插件，可以更改构建名字为版本号，更加清晰明了，安装成功后重启jenkins。进入项目配置中，在构建环境中可以看到Set Build Name选项，里面进行设置构建名字与描述。
+
+#### 更改构建名字
+
+
+
+#### 构建完成上传到蒲公英
+
+##### 1.命令上传
+
+构建中，增加构建步骤，选择Execute shell，输入以下命令：
+
+```shell
+curl -F "file=@/tmp/example.apk" -F "uKey=" -F "_api_key=" https://qiniu-storage.pgyer.com/apiv1/app/upload 
+```
+
+##### 2.插件上传
+
+安装插件Upload to pgyer，成功后重启jenkins，项目配置增加构建后步骤选择Upload to pgyer，填写相关信息，上传。
+
+![](https://static.pgyer.com/image/view/admin_images/04966eb745590be33e3c8176b4766855)
+
+
+
+![](https://static.pgyer.com/image/view/admin_images/4103592163bae6d1118995914ad5ef21)
+
+
+
+参数说明：
+
+|          **参数**           |                           **说明**                           |
+| :-------------------------: | :----------------------------------------------------------: |
+|         pgyer uKey          |                   蒲公英的 `uKey` （必填）                   |
+|        pgyer api_key        |                 蒲公英的 `api_key` （必填）                  |
+|           scandir           |                  ipa/apk 所在目录 （必填）                   |
+|        file widcard         |                  上传文件的通配符 （必填）                   |
+|    installType(optional)    | 应用安装方式，值为(1,2,3)。1：公开，2：密码安装，3：邀请安装。默认为1公开(选填) |
+|     password(optional)      |                   设置App安装密码（选填）                    |
+| updateDescription(optional) |                     版本更新描述（选填）                     |
+|    qrcodePath(optional)     | 如果你需要下载蒲公英返回的二维码，那么这里填写二维码的存储路径，如果你不需要下载，那么你不需要在这里填写任何内容（选填） |
+|    envVarsPath(optional)    | 如果你想存储蒲公英返回的上传信息，那么这里填写保存信息的文件路径，如果你不需要保存，那么你不需要在这里填写任何内容（选填） |
+
+注意：
+qrcodePath与envVarPath是存储二维码和应用信息的文件路径地址，而不是一个文件夹的地址。例如可以这样填写这两个参数：
+
+```shell
+qrcodePath: /Users/James/IOS_Integration/${BUILD_TYPE}/${BUILD_TIME}/qrcode.png
+envVarPath: /Users/James/IOS_Integration/${BUILD_TYPE}/${BUILD_TIME}/envVars.txt**
+```
+
+##### 3.添加下载二维码图片
+
+构建完成后会输出相应的log：
+
+![](https://static.pgyer.com/image/view/admin_images/27684f4b5e2ca166e992e4c057092d92)
+
+然后在jenkins中使用蒲公英的参数：
+
+![](https://static.pgyer.com/image/view/admin_images/44bc8a82d93e25da1372b306d75d0608)
+
+这样子就显示二维码了。
+
+
+
+**注：123内容文字以及图片参考自蒲公英官网，地址为：
+
+[https://www.pgyer.com/doc/view/jenkins](https://www.pgyer.com/doc/view/jenkins)
+
+[https://www.pgyer.com/doc/view/jenkins_plugin](https://www.pgyer.com/doc/view/jenkins_plugin)
+
+
+
