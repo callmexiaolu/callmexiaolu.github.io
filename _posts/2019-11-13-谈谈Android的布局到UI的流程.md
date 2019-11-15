@@ -1,12 +1,12 @@
 ## Android应用界面View是如何绘制的
 
-### 1.xml中的文件是如何转化为代码并被应用
+
 
 布局中的xml文件，经过activity或者dialog的setContentView或者inflate方法设置后产生View
 
-### 2.Activity的setContentView方法与LayoutInflate方法
+### 1.Activity的setContentView方法与LayoutInflate方法
 
-#### 2.1 setContentView
+#### 1.1 setContentView
 
 **Activity中三个重载的setContentView方法：**
 
@@ -60,7 +60,6 @@ public void setContentView(int layoutResID) {
         contentParent.removeAllViews();
         //把我们的布局id通过inflate方法实例化添加到contentParent
         LayoutInflater.from(mContext).inflate(resId, contentParent);
-        //
         mOriginalWindowCallback.onContentChanged();
     }
 ```
@@ -137,8 +136,6 @@ private void ensureSubDecor() {
 
 在createSubDecor方法中，先是获取该Activity的属性(有无标题栏，标题栏属性)进行设置，接着根据是否有标题栏等条件inflate不同的布局实例化赋值给subDecor，接着获取xml布局中的view添加到contentView中，然后通过window的setContentView方法设置subDecor。这个mWindow是抽象类Window的实现类PhoneWindow类。
 
-
-
 ###### PhoneWindow的setContentView方法：
 
 ```java
@@ -164,6 +161,7 @@ private void ensureSubDecor() {
         }
         mContentParentExplicitlySet = true;
     }
+
 
 private void installDecor() {
         mForceDecorInstall = false;
@@ -198,7 +196,7 @@ Activity初始化的时候布局文件没有加载，根布局mContentParent为n
 
 如果关系抽象化可以这样子比较：Window是一块电子屏(抽象类)，PhoneWindow是一块手机电子屏(继承于Window)，DecorView就是电子屏要显示的内容，Activity就是手机电子屏安装位置。
 
-#### 2.2 LayoutInflate
+#### 1.2 LayoutInflate
 
 我们上面分析的Activity和AppcompatActivity的setContentView()方法中都有用到LayoutInflate的inflate()方法。
 
@@ -320,7 +318,7 @@ public View inflate(XmlPullParser parser, @Nullable ViewGroup root, boolean atta
 
 4. 在不设置attachToRoot参数的情况下，如果root不为null，attachToRoot参数默认为true。
 
-### 3.界面中View的绘制
+### 2.界面中View的绘制
 
 那么得到了View，该如何显示到界面上呢？
 
@@ -366,7 +364,370 @@ protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 
 为整个View树计算实际的大小，然后设置实际的高和宽，每个View控件的实际宽高都是由父视图和自身决定的。实际的测量是在onMeasure方法进行，所以在View的子类需要重写onMeasure方法，这是因为measure方法是final的，不允许重载，所以View子类只能通过重载onMeasure来实现自己的测量逻辑。
 
+##### layout
+
+##### draw（绘制）
+
+```java
+//方法位于View.java
+public void draw(Canvas canvas) {
+       ......
+        /*
+         * Draw traversal performs several drawing steps which must be executed
+         * in the appropriate order:
+         *
+         *      1. Draw the background
+         *      2. If necessary, save the canvas' layers to prepare for fading
+         *      3. Draw view's content
+         *      4. Draw children
+         *      5. If necessary, draw the fading edges and restore layers
+         *      6. Draw decorations (scrollbars for instance)
+         */
+
+        // Step 1, draw the background, if needed
+        int saveCount;
+
+        if (!dirtyOpaque) {
+            drawBackground(canvas);
+        }
+
+        // skip step 2 & 5 if possible (common case)
+        final int viewFlags = mViewFlags;
+        boolean horizontalEdges = (viewFlags & FADING_EDGE_HORIZONTAL) != 0;
+        boolean verticalEdges = (viewFlags & FADING_EDGE_VERTICAL) != 0;
+        if (!verticalEdges && !horizontalEdges) {
+            // Step 3, draw the content
+            if (!dirtyOpaque) onDraw(canvas);
+
+            // Step 4, draw the children
+            dispatchDraw(canvas);
+
+            drawAutofilledHighlight(canvas);
+
+            // Overlay is part of the content and draws beneath Foreground
+            if (mOverlay != null && !mOverlay.isEmpty()) {
+                mOverlay.getOverlayView().dispatchDraw(canvas);
+            }
+
+            // Step 6, draw decorations (foreground, scrollbars)
+            onDrawForeground(canvas);
+
+            // Step 7, draw the default focus highlight
+            drawDefaultFocusHighlight(canvas);
+
+            if (debugDraw()) {
+                debugDrawFocus(canvas);
+            }
+
+            // we're done...
+            return;
+        }
+      	.......
+        // Step 2, save the canvas' layers
+        int paddingLeft = mPaddingLeft;
+
+        final boolean offsetRequired = isPaddingOffsetRequired();
+        if (offsetRequired) {
+            paddingLeft += getLeftPaddingOffset();
+        }
+
+        int left = mScrollX + paddingLeft;
+        int right = left + mRight - mLeft - mPaddingRight - paddingLeft;
+        int top = mScrollY + getFadeTop(offsetRequired);
+        int bottom = top + getFadeHeight(offsetRequired);
+
+        if (offsetRequired) {
+            right += getRightPaddingOffset();
+            bottom += getBottomPaddingOffset();
+        }
+
+        final ScrollabilityCache scrollabilityCache = mScrollCache;
+        final float fadeHeight = scrollabilityCache.fadingEdgeLength;
+        int length = (int) fadeHeight;
+
+        // clip the fade length if top and bottom fades overlap
+        // overlapping fades produce odd-looking artifacts
+        if (verticalEdges && (top + length > bottom - length)) {
+            length = (bottom - top) / 2;
+        }
+
+        // also clip horizontal fades if necessary
+        if (horizontalEdges && (left + length > right - length)) {
+            length = (right - left) / 2;
+        }
+        .....
+
+        saveCount = canvas.getSaveCount();
+
+        int solidColor = getSolidColor();
+        if (solidColor == 0) {
+            if (drawTop) {
+                canvas.saveUnclippedLayer(left, top, right, top + length);
+            }
+
+            if (drawBottom) {
+                canvas.saveUnclippedLayer(left, bottom - length, right, bottom);
+            }
+
+            if (drawLeft) {
+                canvas.saveUnclippedLayer(left, top, left + length, bottom);
+            }
+
+            if (drawRight) {
+                canvas.saveUnclippedLayer(right - length, top, right, bottom);
+            }
+        } else {
+            scrollabilityCache.setFadeColor(solidColor);
+        }
+
+        // Step 3, draw the content
+        //第三步，绘制内容
+        if (!dirtyOpaque) onDraw(canvas);
+
+        // Step 4, draw the children
+        //第四步，绘制孩子
+        dispatchDraw(canvas);
+
+        // Step 5, draw the fade effect and restore layers
+        final Paint p = scrollabilityCache.paint;
+        final Matrix matrix = scrollabilityCache.matrix;
+        final Shader fade = scrollabilityCache.shader;
+
+        if (drawTop) {
+            matrix.setScale(1, fadeHeight * topFadeStrength);
+            matrix.postTranslate(left, top);
+            fade.setLocalMatrix(matrix);
+            p.setShader(fade);
+            canvas.drawRect(left, top, right, top + length, p);
+        }
+
+        if (drawBottom) {
+            matrix.setScale(1, fadeHeight * bottomFadeStrength);
+            matrix.postRotate(180);
+            matrix.postTranslate(left, bottom);
+            fade.setLocalMatrix(matrix);
+            p.setShader(fade);
+            canvas.drawRect(left, bottom - length, right, bottom, p);
+        }
+
+        if (drawLeft) {
+            matrix.setScale(1, fadeHeight * leftFadeStrength);
+            matrix.postRotate(-90);
+            matrix.postTranslate(left, top);
+            fade.setLocalMatrix(matrix);
+            p.setShader(fade);
+            canvas.drawRect(left, top, left + length, bottom, p);
+        }
+
+        if (drawRight) {
+            matrix.setScale(1, fadeHeight * rightFadeStrength);
+            matrix.postRotate(90);
+            matrix.postTranslate(right, top);
+            fade.setLocalMatrix(matrix);
+            p.setShader(fade);
+            canvas.drawRect(right - length, top, right, bottom, p);
+        }
+
+        canvas.restoreToCount(saveCount);
+
+        drawAutofilledHighlight(canvas);
+
+        // Overlay is part of the content and draws beneath Foreground
+        if (mOverlay != null && !mOverlay.isEmpty()) {
+            mOverlay.getOverlayView().dispatchDraw(canvas);
+        }
+
+        // Step 6, draw decorations (foreground, scrollbars)
+        //第六步，绘制装饰物(前景，滑动条)
+        onDrawForeground(canvas);
+
+        if (debugDraw()) {
+            debugDrawFocus(canvas);
+        }
+    }
+```
 
 
-##### 接着进行layout
+
+* 1.对View的背景进行绘制
+
+  ```java
+   private void drawBackground(Canvas canvas) {
+          //获取xml中设置了background属性的文件
+          final Drawable background = mBackground;
+          if (background == null) {
+              return;
+          }
+          //设置背景在控件中的范围边界，方法里面的边界是根据layout过程中确定的位置
+          // mBackground.setBounds(0, 0, mRight - mLeft, mBottom - mTop);
+          setBackgroundBounds();
+          .......
+          final int scrollX = mScrollX;
+          final int scrollY = mScrollY;
+          if ((scrollX | scrollY) == 0) {
+            //调用Drawable的draw()方法来完成背景的绘制工作
+              background.draw(canvas);
+          } else {
+              canvas.translate(scrollX, scrollY);
+            //调用Drawable的draw()方法来完成背景的绘制工作
+              background.draw(canvas);
+              canvas.translate(-scrollX, -scrollY);
+          }
+      }
+  ```
+
+  
+
+* 3.对View的内容进行绘制
+
+  ```java
+  /**
+       * Implement this to do your drawing.
+       *
+       * @param canvas the canvas on which the background will be drawn
+       */
+      protected void onDraw(Canvas canvas) {
+      }
+  ```
+
+  方法没有在view中实现，而是在继承了view的各类子view中实现具体逻辑，因为每个view控件的展示各不相同。
+
+* 4.对当前View的所有子View进行绘制
+
+  ```java
+  /**
+       * Called by draw to draw the child views. This may be overridden
+       * by derived classes to gain control just before its children are drawn
+       * (but after its own view has been drawn).
+       * @param canvas the canvas on which to draw the view
+       */
+      protected void dispatchDraw(Canvas canvas) {
+  
+      }
+  ```
+
+  方法没有实现，注释表明了如果View包含子类需要重写该方法，ViewGroup中就重写了该方法。
+
+* 6.对View的前景，滚动条进行绘制
+
+  TextView中可设置滚动条，如果没设置就默认不进行绘制了。
+
+##### draw原理总结
+
+可以看见，绘制过程就是把View对象绘制到屏幕上，整个draw过程需要注意如下细节：
+
+- 如果该View是一个ViewGroup，则需要递归绘制其所包含的所有子View。
+- View默认不会绘制任何内容，真正的绘制都需要自己在子类中实现。
+- View的绘制是借助onDraw方法传入的Canvas类来进行的。
+- View是先绘制背景最后才绘制前景，因此一些设置前景显示的view会导致背景失效(ImageView)
+- 在获取画布剪切区（每个View的draw中传入的Canvas）时会自动处理掉padding，子View获取Canvas不用关注这些逻辑，只用关心如何绘制即可。
+- 默认情况下子View的ViewGroup.drawChild绘制顺序和子View被添加的顺序一致，但是你也可以重载ViewGroup.getChildDrawingOrder()方法提供不同顺序。
+
+
+
+那么如何调用并走到draw这个流程的呢。回到PhoneWindow中
+
+```java
+//PhoneWindow.java
+@Override
+    public void addContentView(View view, ViewGroup.LayoutParams params) {
+        if (mContentParent == null) {
+            installDecor();
+        }
+        if (hasFeature(FEATURE_CONTENT_TRANSITIONS)) {
+            // TODO Augment the scenes/transitions API to support this.
+            Log.v(TAG, "addContentView does not support content transitions");
+        }
+       //这里开始添加之前从xml文件中解析出来的View，添加进主布局内容中
+        mContentParent.addView(view, params);
+        mContentParent.requestApplyInsets();
+        final Callback cb = getCallback();
+        if (cb != null && !isDestroyed()) {
+            cb.onContentChanged();
+        }
+    }
+
+//最后调用到该方法，方法位于ViewGroup.java中
+public void addView(View child, int index, LayoutParams params) {
+        .....
+        //这里调用requestLayout是开始进行Layout方法调用的开始
+        requestLayout();
+        //调用invalidate方法开始进行绘制
+        invalidate(true);
+        addViewInner(child, index, params, false);
+    }
+
+
+    public void requestLayout() {
+        //如果有之前的测量缓存，那就清理掉
+        if (mMeasureCache != null) mMeasureCache.clear();
+
+        if (mAttachInfo != null && mAttachInfo.mViewRequestingLayout == null) {
+            //得到View Tree的Root
+            ViewRootImpl viewRoot = getViewRootImpl();
+            if (viewRoot != null && viewRoot.isInLayout()) {
+                if (!viewRoot.requestLayoutDuringLayout(this)) {
+                    return;
+                }
+            }
+            mAttachInfo.mViewRequestingLayout = this;
+        }
+
+        mPrivateFlags |= PFLAG_FORCE_LAYOUT;
+        mPrivateFlags |= PFLAG_INVALIDATED;
+
+        if (mParent != null && !mParent.isLayoutRequested()) {
+            //调用mParent的方法，自上向下进行layout
+            mParent.requestLayout();
+        }
+        if (mAttachInfo != null && mAttachInfo.mViewRequestingLayout == this) {
+            mAttachInfo.mViewRequestingLayout = null;
+        }
+    }
+
+//ViewRootImpl.java
+ public void dispatchInvalidateDelayed(View view, long delayMilliseconds) {
+        Message msg = mHandler.obtainMessage(MSG_INVALIDATE, view);
+        //使用handler发送一条消息
+        mHandler.sendMessageDelayed(msg, delayMilliseconds);
+    }
+
+  @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                //同样在ViewRootImpl中接受消息，进行调用View的invalidate方法
+                case MSG_INVALIDATE:
+                    ((View) msg.obj).invalidate();
+                    break;
+                .......
+            }
+     }
+
+```
+
+经过requestLayout方法后接着进行invalidate方法，requestLayout方法先是从根开始进行层层向下进行layout后接着进行绘制。invalidate方法则是向上请求，到viewParent接口的实现类ViewRootImpl中再进行绘制调用。
+
+![](https://img-blog.csdn.net/20150531111928069)
+
+
+
+关于上段代码中的测量缓存数据清理，是因为我们在改变一个布局的时候会重新resLayout一次，这时候会重新走一遍流程。另外我们在写自定义View的时候会经常用到invalidate方法，因为该方法能够重新绘制。
+
+- 直接调用invalidate方法.请求重新draw，但只会绘制调用者本身。
+
+- 触发setVisibility方法。 当View可视状态在INVISIBLE转换VISIBLE时会间接调用invalidate方法，继而绘制该View。当View的可视状态在INVISIBLE\VISIBLE 转换为GONE状态时会间接调用requestLayout和invalidate方法，同时由于View树大小发生了变化，所以会请求measure过程以及draw过程，同样只绘制需要“重新绘制”的视图。
+
+- 触发setEnabled方法。请求重新draw，但不会重新绘制任何View包括该调用者本身。
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
 
