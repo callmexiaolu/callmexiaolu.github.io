@@ -6,6 +6,8 @@
 
 ### 1.Activity的setContentView方法与LayoutInflate方法
 
+我们在开发的时候，activity中调用setContentView()方法就能使activity在手机上展示xml布局，在fragment中调用inflate方法就能得到一个View从而进行布局展示。
+
 #### 1.1 setContentView
 
 **Activity中三个重载的setContentView方法：**
