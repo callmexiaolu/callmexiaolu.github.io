@@ -16,5 +16,18 @@
 
 #### 3. Cause: buildOutput.apkData/apkInfo must not be null
 
-打包路径不要选择module，选择project。例如/user/xx/project     这样子的路径，而不是/user/xx/project/app这样子的路径。网上所说的clean project 、rebuild project 、重新启动AS、删除build文件都没用。
+造成该错误的原因是输出的outPut.json文件冲突，但是我们所打的包是正常的，能够正常使用，可以通过更换输出apk路径来解决该问题。网上所说的clean project 、rebuild project 、重新启动AS、删除build文件都没用。
+
+
+
+#### 4.Java ConcurrentModificationException异常原因和解决方法
+
+造成该异常的原因是遍历list，vector的同时进行了修改list，vector，从而引发并发修改异常。
+
+具体原因（掘金中已经有开发者贴出来了）：
+
+当执行remove(Object o)方法后，ArrayList对象的size减一此时size==4, modCount++了，然后Iterator对象中的cursor==5，hasNext发回了true，导致增强for循 环去寻找下一个元素调用next()方法，checkForComodification做校验的时候，发现modCount 已经和Iterator对象中的expectedModCount不一致，说明ArrayList对象已经被修改过， 为了防止错误，抛出异常ConcurrentModificationException。
+
+
+作者：XING辋链接：https://juejin.im/post/5a992a0d6fb9a028e46e17ef来源：掘金著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
 
