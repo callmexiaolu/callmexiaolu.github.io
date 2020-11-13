@@ -1,0 +1,9 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.ekwing.flyparents",
+    "sha256_cert_fingerprints":
+    ["09:FD:F7:1E:BE:8B:74:B4:8A:E7:88:5E:8F:7B:90:78:D8:72:4D:58:7E:A5:BB:D1:A8:3D:38:64:34:3F:80:C6"]
+  }
+}]
